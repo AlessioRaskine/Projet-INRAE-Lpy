@@ -1,0 +1,5 @@
+Test parameter settings output
+Internodelen,Segments,c0, SOURCEcp , R0, Rx, Jw, SOURCEj, SINKj, INT_SINKj, PRIORITY_INT, PRIORITY_SINK
+5,60,0.4,0.08,0.000847,1.00639e-06,0,0.53,0.5,0.005,0.01,0.01
+
+Type,node,position,sim_time,sd_primary.r,sd_primary.j,sd_primary.cpt,h.pot,h.rs,h.flow,C
