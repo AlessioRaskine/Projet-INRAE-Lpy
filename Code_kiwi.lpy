@@ -47,11 +47,13 @@ T = 293.15;             #[K]
 
 
 def FInit (filename,format_, *args ):
+  print(format_.format(*args))
   stream = open(filename,"w+")
   stream.write(format_.format(*args))
   stream.close()
 
 def FPrintf (filename,format_, *args ):
+  print(format_.format(*args))
   stream = open(filename,"a+")
   stream.write(format_.format(*args))
   stream.close()
@@ -192,7 +194,7 @@ InitHydraulicData = HydraulicData(0.0,0.0,0.0,0.0)
 # -------------------------------------------------------------------------- 
 # defines pertinent to simulation control
 
-#define RUNS_TO_PRINT 1
+RUNS_TO_PRINT = 1
 END_SIM = DT * (MAX_SEGMENTS-START_SEGMENTS+5)
 
 
@@ -202,14 +204,14 @@ class Group :
   WaterFlowEst = 21      # two phases for water flow
   WaterPotential = 22
   Linearise = 31      # five phases for carbon dynamics
-  UpdateBranchFlux = 3
-  UpdateCarbonPotential = 3
+  UpdateBranchFlux = 32
+  UpdateCarbonPotential = 33
   UpdateFlow = 34
   Debug = 35	
   Output = 41      #output phase
 
 # Declarations of global variables 
-Phase = 1          # the current computation phase
+Phase = Group.Develop          # the current computation phase
 Serror = 0       # the error in computation for carbon dynamics, measuring convergence to the solution
 error_count = 0   # the number of times 'error' is above MAXERROR
 sim_time = 0    # the current simulation time (steps of DT)
@@ -217,8 +219,8 @@ vis_time = 0     # the time to visualise the model
 
 # Initialization of global variables
 def Start():
-
-  Phase = 1 #Develop
+  global Phase, Serror, error_count, sim_time, vis_time
+  Phase = Group.Develop
   Serror = 0
   error_count = 0
   sim_time = 0
@@ -228,17 +230,18 @@ def Start():
   FInit("output.csv","Test parameter settings output\nInternodelen,Segments,c0, SOURCEcp , R0, Rx, Jw, SOURCEj, SINKj, INT_SINKj, PRIORITY_INT, PRIORITY_SINK\n")
 
   # output parameter values
-  FPrintf("output.csv","{:g},{:d},{:g},{:g},{:g},{:g},{:g},{:g},{:g},{:g},{:g},{:g}\n\n",INDE_LENGTH, MAX_SEGMENTS, c0, SOURCEcp , R0, Rx, Jw,SOURCEj, SINKj, INT_SINKj, PRIORITY_INT, PRIORITY_SINK)
+  FPrintf("output.csv","{},{},{},{},{},{},{},{},{},{},{},{}\n\n",INDE_LENGTH, MAX_SEGMENTS, c0, SOURCEcp , R0, Rx, Jw,SOURCEj, SINKj, INT_SINKj, PRIORITY_INT, PRIORITY_SINK)
 
   # Header for Internode output parameter values
   FPrintf("output.csv","Type,node,position,sim_time,sd_primary.r,sd_primary.j,sd_primary.cpt,h.pot,h.rs,h.flow,C\n")
 
 
-
 # Processing at start of each derivation step 
 def StartEach():
-  global sim_time #usage of global variables inside functions
+  global Phase, Serror, error_count, sim_time, vis_time
+  
   # set rules to use for next phase 
+  print('Use :',Phase)
   useGroup(Phase)
   # This switch statement controls derivation direction for the different phases of a model timestep 
   # specification of  phase computation is specified in the labelled groups following the axiom 
@@ -249,38 +252,39 @@ def StartEach():
       if (sim_time < END_SIM):
       # update simulation time
         sim_time += DT
+        print("simulation time :",sim_time,END_SIM)
       else :
-        Print("End of simulation!\n")
+        print("End of simulation!")
         Stop() # stop simulation at end of run 
       
   # two phases for water flow 
-    case 21 :              #group WaterFlowEst, right to left pass
+    case Group.WaterFlowEst :              #group WaterFlowEst, right to left pass
       backward()         
       
-    case 22:            #group WaterPotential, left to right pass         
+    case Group.WaterPotential:            #group WaterPotential, left to right pass         
       forward()
       
   # five phases for carbon dynamics 
-    case 31:                 #group Linearise, left to right pass
+    case Group.Linearise:                 #group Linearise, left to right pass
       forward()
       
-    case 3:          #group UpdateBranchFlux, right to left pass
+    case Group.UpdateBranchFlux:          #group UpdateBranchFlux, right to left pass
       backward()
       
-    case 3:     #group UpdateCarbonPotential, left to right pass
+    case Group.UpdateCarbonPotential:     #group UpdateCarbonPotential, left to right pass
       forward()
       
-    case 34:                #group UpdateFlow left to right pass
+    case Group.UpdateFlow:                #group UpdateFlow left to right pass
       forward()
       Serror = 0
       
-    case 35:                     #group Debug, prints out info of all sinks/sources with error > MAX_ERROR
-      FPrintf("Warning: error > MAXERROR (%g > %g) after %d iterations\n", Serror, MAXERROR, error_count)
-      FPrintf("Dumping 'S' modules at sim_time %g:\n", sim_time)
+    case Group.Debug:                     #group Debug, prints out info of all sinks/sources with error > MAX_ERROR
+      print("Warning: error > MAXERROR (%g > %g) after %d iterations" %( Serror, MAXERROR, error_count))
+      print("Dumping 'S' modules at sim_time :", sim_time)
       forward()
       
-    case 41:                    #group Output, one phase for output 
-      FPrintf ("Start of Output Phase at sim_time %g:\n", sim_time)
+    case Group.Output:                    #group Output, one phase for output 
+      print ("Start of Output Phase at sim_time :", sim_time)
       forward()
       
   
@@ -288,9 +292,8 @@ def StartEach():
 
 # Processing at end of each derivation step  
 def EndEach():
-  global Phase
-  global vis_time
-  global error_count
+  global Phase, Serror, error_count, sim_time, vis_time
+  
   # this switch statement determines next phase type
   match Phase:
   
@@ -325,6 +328,7 @@ def EndEach():
       
     case Group.UpdateFlow:
       if (Serror < MAXERROR):     # successful flow update processing
+        print("Error :",Serror," / ", MAXERROR)
         if (sim_time >= END_SIM-DT*RUNS_TO_PRINT): # change to output phase at end of run
           Phase = Group.Output
         else : # continue to next step
@@ -337,14 +341,14 @@ def EndEach():
           Phase = Group.Debug
         else :
         # iterate process
-          ++error_count
+          error_count += 1
           Phase = Group.Linearise
       
     case Group.Debug:                 # stop after debug 
       Stop()
       
     case Group.Output:                # one phase for output             
-      FPrintf("End of Output Phase at time %g:\n", sim_time)
+      print("End of Output Phase at time :", sim_time)
       Phase = Group.Develop
       
       
@@ -360,7 +364,6 @@ module TestCase(),              # the initial setup of structure
 Axiom: TestCase()
 
 derivation length: 999999
-
 
 production:
 
@@ -426,13 +429,13 @@ Internode(inode,ilength) S(sd_internode_primary) Hd(h_internode) << Sink(node) S
   if (inode<MAX_SEGMENTS):# produce new internodes every develop step, until maximum number reached
   		nproduce (Internode(inode+1,ilength)S(sd_internode_primary)Hd(h_internode)SB() EB()) #to ensure consistency for rule matching, place SB() EB() here, where a leaf would have been.
   		node = node+1
-  		Printf("new node: %d\n", inode+1)
+  		print("new node:", inode+1)
   produce Sink(node) S(sd_sink)Hd(h)
 
 S(sd):
   #if r == INFTY this is an inert S between branches
   if (sd.r != 0.0 or sd.sink_source.a != 0.0 or sd.sink_source.b != 0.0):
-    Printf ("PANIC! Orphan S() module found. Check 'Develop' phase.\n") 
+    print ("PANIC! Orphan S() module found. Check 'Develop' phase.") 
   produce S(sd)
   
   
@@ -463,7 +466,7 @@ Sink(node) S(sd_sink) :
 S(sd):
   # if r, a and b == 0 this is an inert S between branches
   if (sd.r != 0.0 or sd.sink_source.a != 0.0 or sd.sink_source.b != 0.0):
-    Printf ("PANIC! Orphan S() module found. Check 'UpdateDemand' phase.\n")
+    print ("PANIC! Orphan S() module found. Check 'UpdateDemand' phase.")
   produce S(sd)
 
 
@@ -530,8 +533,7 @@ S(sd):
 group 34: # update the flow of carbon into each sink/source
 
 S(sd) :
-  #extern float Serror
-  #float new_j, divisor
+  global Serror
   
   if (sd.cpt >= 0.0):
     # Calculate new flux into sink_source
@@ -540,6 +542,7 @@ S(sd) :
     sd.err = new_j - sd.j
     # Calculate cumulative error to determine whether it is possible to stop
     Serror += abs(sd.err)
+    print("Local error:",abs(sd.err))
     # Update flux to be consistent with present values of cpt
     # check for minimum current
     if (abs(new_j) < EPSILON):
@@ -560,7 +563,7 @@ group 35: # if error doesn't fall below MAXERROR after many iterations, output d
 
 S(sd):
   if (sd.err > MAXERROR):
-    Printf("C:%g j:%g cpt:%g err:%g\n", sd.C, sd.j, sd.cpt, sd.err)
+    printf("C:{} j:{} cpt:{} err:{}\n" % ( sd.C, sd.j, sd.cpt, sd.err))
   produce S(sd)
 
 
@@ -612,11 +615,11 @@ Hd(h):
 group 41: 
 
 Internode(node,length)S(sd_primary)Hd(h): 
-  FPrintf("output.csv","Int,%d,%g,%g,%g,%g,%g,%g,%g,%g,%g\n", node, node*length, sim_time, sd_primary.r, sd_primary.j, sd_primary.cpt,h.pot, h.rs, h.flow,sqrt(2.0*sd_primary.cpt))
+  FPrintf("output.csv","Int,{},{},{},{},{},{},{},{},{},{}", node, node*length, sim_time, sd_primary.r, sd_primary.j, sd_primary.cpt,h.pot, h.rs, h.flow,sqrt(2.0*sd_primary.cpt))
   produce Internode(node,length)S(sd_primary)Hd(h) 
 
 Sink(node)S(sd_sink)Hd(h):
-  FPrintf("output.csv","Snk,%d,%g,%g,%g,%g,%g,%g,%g,%g,%g\n", node, (node-1)*INDE_LENGTH, sim_time, sd_sink.r, sd_sink.j, sd_sink.cpt,h.pot, h.rs, h.flow,sqrt(2.0*sd_sink.cpt))
+  FPrintf("output.csv","Snk,{},{},{},{},{},{},{},{},{},{}", node, (node-1)*INDE_LENGTH, sim_time, sd_sink.r, sd_sink.j, sd_sink.cpt,h.pot, h.rs, h.flow,sqrt(2.0*sd_sink.cpt))
   produce Sink(node)S(sd_sink)Hd(h)
 
 # -------------------------------------------------------------------------- 
