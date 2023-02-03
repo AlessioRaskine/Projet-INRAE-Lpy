@@ -288,12 +288,22 @@ def StartEach():
       forward()
       
   
-
+minValue, maxValue = 1e5,0
+atttoplot = 'C'
 
 # Processing at end of each derivation step  
-def EndEach():
+def EndEach(lstring):
   global Phase, Serror, error_count, sim_time, vis_time
   
+  global minValue, maxValue
+  for m in lstring:
+    minValue, maxValue = 1e5,0
+    if m.name == 'S':
+      value = getattr(m[0],atttoplot)
+      if minValue > value : minValue = value
+      if maxValue < value : maxValue = value
+  
+  frameDisplay(False)
   # this switch statement determines next phase type
   match Phase:
   
@@ -303,7 +313,7 @@ def EndEach():
           Phase = Group.WaterFlowEst	    # switch to hydraulic processing
           # Set to display frame if appropriate
           if (sim_time >= vis_time):
-            frameDisplay()
+            frameDisplay(True)
             vis_time += VIS_STEP
             
           error_count = 0
@@ -363,7 +373,7 @@ module TestCase(),              # the initial setup of structure
 
 Axiom: TestCase()
 
-derivation length: 999999
+derivation length: 999
 
 production:
 
@@ -389,8 +399,10 @@ TestCase():
   # produce segments 
   for node in range (1,START_SEGMENTS+1): 
     # initial conditions for cp top and bottom
+    sd_internode_primary = copy.deepcopy(sd_internode_primary)
     sd_internode_primary.cpt = SOURCEcp - node * INDE_LENGTH * (SOURCEj - INT_SINKj * node * INDE_LENGTH/2) * Rs    
     sd_internode_primary.cpb = SOURCEcp - (node-1) * INDE_LENGTH * (SOURCEj - INT_SINKj * node * INDE_LENGTH/2) * Rs
+    h_internode = copy.deepcopy(h_internode)
     nproduce (Internode(node,INDE_LENGTH)S(sd_internode_primary)Hd(h_internode)SB()EB())# to ensure consistency for rule matching, place SB() EB() here, where a leaf would be.
     
   # produce sink 
@@ -426,10 +438,12 @@ Internode(node,length) S(sd_primary)  Hd(h):
 Internode(inode,ilength) S(sd_internode_primary) Hd(h_internode) << Sink(node) S(sd_sink)  Hd(h):
   #update sink size
   sd_sink.Update_Carbon()
-  if (inode<MAX_SEGMENTS):# produce new internodes every develop step, until maximum number reached
-  		nproduce (Internode(inode+1,ilength)S(sd_internode_primary)Hd(h_internode)SB() EB()) #to ensure consistency for rule matching, place SB() EB() here, where a leaf would have been.
-  		node = node+1
-  		print("new node:", inode+1)
+  if (inode<MAX_SEGMENTS):# produce new internodes every develop step, until maximum number reached	 
+    sd_internode_primary = copy.deepcopy(sd_internode_primary)
+    h_internode = copy.deepcopy(h_internode)
+    nproduce (Internode(inode+1,ilength)S(sd_internode_primary)Hd(h_internode)SB() EB()) #to ensure consistency for rule matching, place SB() EB() here, where a leaf would have been.
+    node = node+1
+    print("new node:", inode+1)
   produce Sink(node) S(sd_sink)Hd(h)
 
 S(sd):
@@ -450,6 +464,7 @@ group 31: # linearise equations for sinks/sources
 
 Internode(node,length) S(sd_primary) :
   #carbon flux function is set
+  sd_primary = copy.deepcopy(sd_primary)
   sd_primary.sink_source.a = INT_SINKj *(SinkUnloading(sd_primary.cpt, PRIORITY_INT)-sd_primary.cpt	* dSinkUnloading_dcp (sd_primary.cpt, PRIORITY_INT))
   sd_primary.sink_source.b = INT_SINKj *dSinkUnloading_dcp (sd_primary.cpt, PRIORITY_INT)
   produce Internode(node,length) S(sd_primary) 
@@ -457,6 +472,7 @@ Internode(node,length) S(sd_primary) :
 
 
 Sink(node) S(sd_sink) :
+  sd_sink = copy.deepcopy(sd_sink)
   sd_sink.sink_source.a = SINKj *(SinkUnloading(sd_sink.cpt, PRIORITY_SINK)-sd_sink.cpt * dSinkUnloading_dcp (sd_sink.cpt, PRIORITY_SINK));
   sd_sink.sink_source.b = SINKj *dSinkUnloading_dcp (sd_sink.cpt, PRIORITY_SINK);  
   produce Sink(node) S(sd_sink)
@@ -478,6 +494,7 @@ group 3:
 consider: S
 
 S(sd) >> SB() S(sdr2) EB() S(sdr1): 
+  sd = copy.deepcopy(sd)
   sd.branch_flux.a = sdr1.branch_flux.a+sdr2.branch_flux.a
   sd.branch_flux.b = sdr1.branch_flux.b+sdr2.branch_flux.b
   sd.Update_Branch_Flux()
@@ -485,6 +502,7 @@ S(sd) >> SB() S(sdr2) EB() S(sdr1):
 
 
 S(sd) >> SB() S(sdr) EB():
+  sd = copy.deepcopy(sd)
   sd.branch_flux.a = sdr.branch_flux.a
   sd.branch_flux.b = sdr.branch_flux.b
   sd.Update_Branch_Flux()
@@ -493,6 +511,7 @@ S(sd) >> SB() S(sdr) EB():
 
 
 S(sd) >> S(sdr):
+  sd = copy.deepcopy(sd)
   sd.branch_flux.a = sdr.branch_flux.a
   sd.branch_flux.b = sdr.branch_flux.b
   sd.Update_Branch_Flux()
@@ -501,6 +520,7 @@ S(sd) >> S(sdr):
 
 
 S(sd):
+  sd = copy.deepcopy(sd)
   sd.branch_flux.a = 0
   sd.branch_flux.b = 0
   sd.Update_Branch_Flux()
@@ -514,11 +534,13 @@ consider: S
 
 # calculate the carbon potentials; estimate the error
 S(sdl) << S(sd):
+  sd = copy.deepcopy(sd)
   sd.cpb = sdl.cpt
   sd.cpt = (sd.cpb*(1.0 - sd.branch_flux.b*sd.r) - sd.branch_flux.a*sd.r + sd.sink_source.a*sd.r/2.)/(1- sd.sink_source.b*sd.r/2.); 
   produce S(sd)
 
 S(sd):
+  sd = copy.deepcopy(sd)
   #Boundary condition sets carbon potential at the bottom equal to SOURCEcp
   sd.cpb = SOURCEcp
   #calculation for carbon potential at the top
@@ -542,7 +564,6 @@ S(sd) :
     sd.err = new_j - sd.j
     # Calculate cumulative error to determine whether it is possible to stop
     Serror += abs(sd.err)
-    print("Local error:",abs(sd.err))
     # Update flux to be consistent with present values of cpt
     # check for minimum current
     if (abs(new_j) < EPSILON):
@@ -576,18 +597,22 @@ group 21:
 consider: Hd
 
 Hd(h) >> SB() EB() SB() Hd(hr):
+  h = copy.deepcopy(h)
   h.flow = hr.flow
   produce Hd(h)
 
 Hd(h) >> SB() Hd(hr2) EB() Hd(hr1):
+  h = copy.deepcopy(h)
   h.flow = hr1.flow + hr2.flow
   produce Hd(h)
 
 Hd(h) >> SB() Hd(hr) EB():
+  h = copy.deepcopy(h)
   h.flow = hr.flow
   produce Hd(h)
 
 Hd(h) >> Hd(hr):
+  h = copy.deepcopy(h)
   h.flow = hr.flow
   produce Hd(h)
 
@@ -601,10 +626,12 @@ Hd(h):
 group 22:
 
 Hd(hl) << Hd(h):
+  h = copy.deepcopy(h)
   h.pot = hl.pot - (h.flow + h.Mcf) * h.rs
   produce Hd(h)
   
 Hd(h):
+  h = copy.deepcopy(h)
   h.pot = -(h.flow + h.Mcf) * h.rs
   produce Hd(h)
 
@@ -636,7 +663,7 @@ maximum depth: 2
 
 Internode(node,length)  S(sd_primary)  Hd(h): 
   colour = 15
-  produce SetColor(colour) SetWidth(1) F(length)
+  produce InterpolateColors(5,3,(getattr(sd_primary,atttoplot)-minValue)/(maxValue-minValue)) SetWidth(1) F(length)
   
 Sink(node):
   radius= 0.5
