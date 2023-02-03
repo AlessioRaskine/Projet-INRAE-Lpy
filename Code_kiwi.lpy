@@ -489,7 +489,7 @@ S(sd):
 # -------------------------------------------------------------------------- 
 # calculate equivalent sink/source function of the  branch starting at the base
 
-group 3:	
+group 32:	
 
 consider: S
 
@@ -528,7 +528,7 @@ S(sd):
 
 # -------------------------------------------------------------------------- 
 
-group 3: # find the concentration of carbon along transport pathway
+group 33: # find the concentration of carbon along transport pathway
 
 consider: S
 
