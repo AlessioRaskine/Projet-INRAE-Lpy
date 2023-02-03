@@ -15,7 +15,7 @@ DT        = 0.04166666666666666666667      #time step (days), 1 hour
 MAXERROR  = 1e-4     # error threshold for evaluating carbon flow
 MAXERRORH = 1e-2      # error threshold for evaluating carbon flow
 ENV_STEP  = 1.0       # when to compute light distribution (days) (keep as 1 for now!!!)
-VIS_STEP  = 1.0       # when to visualise model (days)
+VIS_STEP  = 0.1       # when to visualise model (days)
 OUT_STEP  = 0.04166666666666666666667      # when to write model output to a file
 PI        = 3.14159265358979323846264 # PI
 
@@ -291,15 +291,19 @@ def StartEach():
 minValue, maxValue = 1e5,0
 atttoplot = 'C'
 
+def get_value(p):
+  return sqrt(2.0*p.cpt)
+  
 # Processing at end of each derivation step  
 def EndEach(lstring):
   global Phase, Serror, error_count, sim_time, vis_time
   
   global minValue, maxValue
+  print('EndEach')
+  minValue, maxValue = 1e5,0
   for m in lstring:
-    minValue, maxValue = 1e5,0
     if m.name == 'S':
-      value = getattr(m[0],atttoplot)
+      value = get_value(m[0])
       if minValue > value : minValue = value
       if maxValue < value : maxValue = value
   
@@ -663,7 +667,8 @@ maximum depth: 2
 
 Internode(node,length)  S(sd_primary)  Hd(h): 
   colour = 15
-  produce InterpolateColors(5,3,(getattr(sd_primary,atttoplot)-minValue)/(maxValue-minValue)) SetWidth(1) F(length)
+  v = get_value(sd_primary)
+  produce InterpolateColors(5,3,(v-minValue)/(maxValue-minValue)) SetWidth(1) F(length)
   
 Sink(node):
   radius= 0.5
@@ -684,3 +689,4 @@ def __initialiseContext__(context):
 	Color_15 = pgl.Material("Color_15" , ambient = (45,152,37) , diffuse = 1.05263 , )
 	Color_15.name = "Color_15"
 	context.turtle.setMaterial(15,Color_15)
+	context.animation_timestep = 0.303
